@@ -1,0 +1,128 @@
+---
+title: "crash_analysis"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+library(lubridate)
+library(janitor)
+
+crashes_raw <- read_csv("data/motor_vehicle_collisions.csv")
+```
+
+```{r}
+crashes_clean <- crashes_raw |>
+  clean_names() |>
+  mutate(
+    # Date
+    crash_date = mdy(crash_date),
+
+    # Borough
+    borough = str_to_title(str_squish(borough)),
+
+    # Invalid coordinates
+    latitude = if_else(latitude == 0, NA_real_, latitude),
+    longitude = if_else(longitude == 0, NA_real_, longitude),
+
+    # Contributing factor inconsistencies
+    contributing_factor_vehicle_1 = case_when(
+      contributing_factor_vehicle_1 == "Illnes" ~ "Illness",
+
+      contributing_factor_vehicle_1 %in%
+        c("Drugs (illegal)", "Drugs (Illegal)") ~
+        "Drugs (Illegal)",
+
+      contributing_factor_vehicle_1 %in%
+        c("Cell Phone (hand-Held)", "Cell Phone (hand-held)") ~
+        "Cell Phone (Hand-Held)",
+
+      contributing_factor_vehicle_1 %in%
+        c("1", "35", "36", "37", "52", "70", "80") ~
+        NA_character_,
+
+      TRUE ~ contributing_factor_vehicle_1
+    )
+  )
+```
+
+```{r}
+crashes_clean <- crashes_clean |>
+  mutate(
+    vehicle_type_1 = case_when(
+      str_detect(
+        str_to_lower(vehicle_type_code_1),
+        "bike|bicycle|e-bike"
+      ) ~ "Bicycle",
+
+      str_detect(
+        str_to_lower(vehicle_type_code_1),
+        "motorcycle|motorbike|moped|scooter"
+      ) ~ "Motorcycle / Scooter",
+
+      str_detect(
+        str_to_lower(vehicle_type_code_1),
+        "truck|tractor|tanker|flat bed|flat rack|chassis|garbage|refuse"
+      ) ~ "Truck",
+
+      str_detect(
+        str_to_lower(vehicle_type_code_1),
+        "bus"
+      ) ~ "Bus",
+
+      str_detect(
+        str_to_lower(vehicle_type_code_1),
+        "taxi"
+      ) ~ "Taxi",
+
+      str_detect(
+        str_to_lower(vehicle_type_code_1),
+        "ambulance|fire|emergency"
+      ) ~ "Emergency Vehicle",
+
+      str_detect(
+        str_to_lower(vehicle_type_code_1),
+        "sedan|passenger|station wagon|suv"
+      ) ~ "Passenger Vehicle",
+
+      str_detect(
+        str_to_lower(vehicle_type_code_1),
+        "van"
+      ) ~ "Van",
+
+      is.na(vehicle_type_code_1) ~ NA_character_,
+
+      TRUE ~ "Other"
+    )
+  )
+```
+
+```{r}
+# Dimensions
+dim(crashes_clean)
+
+# Duplicate collision IDs
+crashes_clean |>
+  count(collision_id) |>
+  filter(n > 1)
+
+# Boroughs
+crashes_clean |>
+  count(borough, sort = TRUE)
+
+# Cleaned vehicle types
+crashes_clean |>
+  count(vehicle_type_1, sort = TRUE)
+
+# Contributing factors
+crashes_clean |>
+  count(contributing_factor_vehicle_1, sort = TRUE)
+```
+```{r}
+write_rds(
+  crashes_clean,
+  "nyc_collisions_clean.rds"
+)
+```
+

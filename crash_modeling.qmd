@@ -1,0 +1,683 @@
+---
+title: "augment_data"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+library(lubridate)
+
+crashes <- read_rds("data/nyc_collisions_clean.rds")
+```
+
+```{r}
+crashes_analysis <- crashes |>
+  mutate(
+    # Outcomes
+    injury_crash = number_of_persons_injured > 0,
+    fatal_crash = number_of_persons_killed > 0,
+
+    # Time
+    year = year(crash_date),
+    month = month(crash_date, label = TRUE),
+    day_of_week = wday(crash_date, label = TRUE),
+
+    # Keep original crash_time unchanged
+    hour = as.integer(str_sub(crash_time, 1, 2)),
+
+    weekend = day_of_week %in% c("Sat", "Sun"),
+    night = hour < 6 | hour >= 20,
+    rush_hour = hour %in% c(7, 8, 9, 16, 17, 18)
+  )
+```
+
+```{r}
+crashes_analysis <- crashes_analysis |>
+  mutate(
+    speeding = contributing_factor_vehicle_1 == "Unsafe Speed",
+
+    alcohol = contributing_factor_vehicle_1 == "Alcohol Involvement",
+
+    distracted = contributing_factor_vehicle_1 %in% c(
+      "Driver Inattention/Distraction",
+      "Outside Car Distraction",
+      "Passenger Distraction",
+      "Other Electronic Device",
+      "Cell Phone (Hand-Held)",
+      "Cell Phone (hands-free)",
+      "Texting",
+      "Using On Board Navigation Device",
+      "Eating or Drinking",
+      "Listening/Using Headphones"
+    ),
+
+    fatigued = contributing_factor_vehicle_1 %in% c(
+      "Fatigued/Drowsy",
+      "Fell Asleep"
+    ),
+
+    aggressive_driving = contributing_factor_vehicle_1 %in% c(
+      "Aggressive Driving/Road Rage",
+      "Passing or Lane Usage Improper",
+      "Passing Too Closely",
+      "Unsafe Lane Changing"
+    ),
+
+    traffic_violation = contributing_factor_vehicle_1 %in% c(
+      "Failure to Yield Right-of-Way",
+      "Traffic Control Disregarded",
+      "Failure to Keep Right"
+    )
+  )
+```
+
+```{r}
+crashes_analysis <- crashes_analysis |>
+  unite(
+    "vehicle_types",
+    starts_with("vehicle_type_code_"),
+    sep = " | ",
+    remove = FALSE,
+    na.rm = TRUE
+  ) |>
+  mutate(
+    vehicle_types = str_to_lower(vehicle_types),
+
+    bicycle_involved = str_detect(
+      vehicle_types,
+      "bike|bicycle|e-bike"
+    ),
+
+    motorcycle_involved = str_detect(
+      vehicle_types,
+      "motorcycle|motorbike|moped|scooter"
+    ),
+
+    truck_involved = str_detect(
+      vehicle_types,
+      "truck|tractor|tanker|flat bed|flat rack|chassis|garbage|refuse"
+    ),
+
+    bus_involved = str_detect(
+      vehicle_types,
+      "bus"
+    )
+  )
+```
+
+```{r}
+crashes_analysis <- crashes_analysis |>
+  mutate(
+    severity_score =
+      0.5 * number_of_persons_injured +
+      number_of_persons_killed
+  )
+
+crashes_analysis |>
+  summarise(
+    mean_severity = mean(severity_score, na.rm = TRUE),
+    median_severity = median(severity_score, na.rm = TRUE),
+    max_severity = max(severity_score, na.rm = TRUE)
+  )
+
+crashes_analysis |>
+  count(severity_score, sort = TRUE)
+```
+
+```{r}
+risk_summary <- bind_rows(
+  crashes_analysis |>
+    filter(speeding) |>
+    summarise(
+      factor = "Speeding",
+      n = n(),
+      injury_rate = mean(injury_crash, na.rm = TRUE) * 100,
+      fatal_rate = mean(fatal_crash, na.rm = TRUE) * 100,
+      mean_severity = mean(severity_score, na.rm = TRUE)
+    ),
+
+  crashes_analysis |>
+    filter(alcohol) |>
+    summarise(
+      factor = "Alcohol",
+      n = n(),
+      injury_rate = mean(injury_crash, na.rm = TRUE) * 100,
+      fatal_rate = mean(fatal_crash, na.rm = TRUE) * 100,
+      mean_severity = mean(severity_score, na.rm = TRUE)
+    ),
+
+  crashes_analysis |>
+    filter(distracted) |>
+    summarise(
+      factor = "Distracted",
+      n = n(),
+      injury_rate = mean(injury_crash, na.rm = TRUE) * 100,
+      fatal_rate = mean(fatal_crash, na.rm = TRUE) * 100,
+      mean_severity = mean(severity_score, na.rm = TRUE)
+    ),
+
+  crashes_analysis |>
+    filter(fatigued) |>
+    summarise(
+      factor = "Fatigued",
+      n = n(),
+      injury_rate = mean(injury_crash, na.rm = TRUE) * 100,
+      fatal_rate = mean(fatal_crash, na.rm = TRUE) * 100,
+      mean_severity = mean(severity_score, na.rm = TRUE)
+    ),
+
+  crashes_analysis |>
+    filter(aggressive_driving) |>
+    summarise(
+      factor = "Aggressive Driving",
+      n = n(),
+      injury_rate = mean(injury_crash, na.rm = TRUE) * 100,
+      fatal_rate = mean(fatal_crash, na.rm = TRUE) * 100,
+      mean_severity = mean(severity_score, na.rm = TRUE)
+    ),
+
+  crashes_analysis |>
+    filter(traffic_violation) |>
+    summarise(
+      factor = "Traffic Violation",
+      n = n(),
+      injury_rate = mean(injury_crash, na.rm = TRUE) * 100,
+      fatal_rate = mean(fatal_crash, na.rm = TRUE) * 100,
+      mean_severity = mean(severity_score, na.rm = TRUE)
+    )
+)
+
+risk_summary
+```
+
+```{r}
+vehicle_summary <- bind_rows(
+  crashes_analysis |>
+    filter(bicycle_involved) |>
+    summarise(
+      vehicle = "Bicycle",
+      n = n(),
+      injury_rate = mean(injury_crash, na.rm = TRUE) * 100,
+      fatal_rate = mean(fatal_crash, na.rm = TRUE) * 100,
+      mean_severity = mean(severity_score, na.rm = TRUE)
+    ),
+
+  crashes_analysis |>
+    filter(motorcycle_involved) |>
+    summarise(
+      vehicle = "Motorcycle / Scooter",
+      n = n(),
+      injury_rate = mean(injury_crash, na.rm = TRUE) * 100,
+      fatal_rate = mean(fatal_crash, na.rm = TRUE) * 100,
+      mean_severity = mean(severity_score, na.rm = TRUE)
+    ),
+
+  crashes_analysis |>
+    filter(truck_involved) |>
+    summarise(
+      vehicle = "Truck",
+      n = n(),
+      injury_rate = mean(injury_crash, na.rm = TRUE) * 100,
+      fatal_rate = mean(fatal_crash, na.rm = TRUE) * 100,
+      mean_severity = mean(severity_score, na.rm = TRUE)
+    ),
+
+  crashes_analysis |>
+    filter(bus_involved) |>
+    summarise(
+      vehicle = "Bus",
+      n = n(),
+      injury_rate = mean(injury_crash, na.rm = TRUE) * 100,
+      fatal_rate = mean(fatal_crash, na.rm = TRUE) * 100,
+      mean_severity = mean(severity_score, na.rm = TRUE)
+    )
+)
+
+vehicle_summary
+```
+
+```{r}
+vehicle_summary <- bind_rows(
+  crashes_analysis |>
+    filter(bicycle_involved) |>
+    summarise(
+      vehicle = "Bicycle",
+      n = n(),
+      injury_rate = mean(injury_crash, na.rm = TRUE) * 100,
+      fatal_rate = mean(fatal_crash, na.rm = TRUE) * 100,
+      mean_severity = mean(severity_score, na.rm = TRUE)
+    ),
+
+  crashes_analysis |>
+    filter(motorcycle_involved) |>
+    summarise(
+      vehicle = "Motorcycle / Scooter",
+      n = n(),
+      injury_rate = mean(injury_crash, na.rm = TRUE) * 100,
+      fatal_rate = mean(fatal_crash, na.rm = TRUE) * 100,
+      mean_severity = mean(severity_score, na.rm = TRUE)
+    ),
+
+  crashes_analysis |>
+    filter(truck_involved) |>
+    summarise(
+      vehicle = "Truck",
+      n = n(),
+      injury_rate = mean(injury_crash, na.rm = TRUE) * 100,
+      fatal_rate = mean(fatal_crash, na.rm = TRUE) * 100,
+      mean_severity = mean(severity_score, na.rm = TRUE)
+    ),
+
+  crashes_analysis |>
+    filter(bus_involved) |>
+    summarise(
+      vehicle = "Bus",
+      n = n(),
+      injury_rate = mean(injury_crash, na.rm = TRUE) * 100,
+      fatal_rate = mean(fatal_crash, na.rm = TRUE) * 100,
+      mean_severity = mean(severity_score, na.rm = TRUE)
+    )
+)
+
+vehicle_summary
+```
+
+```{r}
+time_summary <- bind_rows(
+  crashes_analysis |>
+    group_by(night) |>
+    summarise(
+      n = n(),
+      injury_rate = mean(injury_crash, na.rm = TRUE) * 100,
+      fatal_rate = mean(fatal_crash, na.rm = TRUE) * 100,
+      mean_severity = mean(severity_score, na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    mutate(
+      category = if_else(night, "Night", "Day"),
+      variable = "Time of Day"
+    ) |>
+    select(variable, category, n, injury_rate, fatal_rate, mean_severity),
+
+  crashes_analysis |>
+    group_by(weekend) |>
+    summarise(
+      n = n(),
+      injury_rate = mean(injury_crash, na.rm = TRUE) * 100,
+      fatal_rate = mean(fatal_crash, na.rm = TRUE) * 100,
+      mean_severity = mean(severity_score, na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    mutate(
+      category = if_else(weekend, "Weekend", "Weekday"),
+      variable = "Day Type"
+    ) |>
+    select(variable, category, n, injury_rate, fatal_rate, mean_severity),
+
+  crashes_analysis |>
+    group_by(rush_hour) |>
+    summarise(
+      n = n(),
+      injury_rate = mean(injury_crash, na.rm = TRUE) * 100,
+      fatal_rate = mean(fatal_crash, na.rm = TRUE) * 100,
+      mean_severity = mean(severity_score, na.rm = TRUE),
+      .groups = "drop"
+    ) |>
+    mutate(
+      category = if_else(rush_hour, "Rush Hour", "Non-Rush Hour"),
+      variable = "Rush Hour"
+    ) |>
+    select(variable, category, n, injury_rate, fatal_rate, mean_severity)
+)
+
+time_summary
+```
+
+```{r}
+borough_summary <- crashes_analysis |>
+  filter(!is.na(borough)) |>
+  group_by(borough) |>
+  summarise(
+    n = n(),
+    injury_rate = mean(injury_crash, na.rm = TRUE) * 100,
+    fatal_rate = mean(fatal_crash, na.rm = TRUE) * 100,
+    mean_severity = mean(severity_score, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  arrange(desc(injury_rate))
+
+borough_summary
+```
+
+```{r}
+year_summary <- crashes_analysis |>
+  group_by(year) |>
+  summarise(
+    n = n(),
+    injury_rate = mean(injury_crash, na.rm = TRUE) * 100,
+    fatal_rate = mean(fatal_crash, na.rm = TRUE) * 100,
+    mean_severity = mean(severity_score, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  arrange(year)
+
+year_summary
+```
+
+```{r}
+injury_model_1 <- glm(
+  injury_crash ~
+    night +
+    weekend +
+    rush_hour +
+    factor(year) +
+    borough,
+  data = crashes_analysis,
+  family = binomial
+)
+```
+
+```{r}
+injury_model_2 <- glm(
+  injury_crash ~
+    night +
+    weekend +
+    rush_hour +
+    factor(year) +
+    borough +
+    speeding +
+    alcohol +
+    distracted +
+    fatigued +
+    aggressive_driving +
+    traffic_violation,
+  data = crashes_analysis,
+  family = binomial
+)
+```
+
+```{r}
+injury_model_3 <- glm(
+  injury_crash ~
+    night +
+    weekend +
+    rush_hour +
+    factor(year) +
+    borough +
+    speeding +
+    alcohol +
+    distracted +
+    fatigued +
+    aggressive_driving +
+    traffic_violation +
+    bicycle_involved +
+    motorcycle_involved +
+    truck_involved +
+    bus_involved,
+  data = crashes_analysis,
+  family = binomial
+)
+```
+
+```{r}
+summary(injury_model_3)
+```
+
+```{r}
+library(broom)
+injury_results <- tidy(
+  injury_model_3,
+  exponentiate = TRUE,
+  conf.int = TRUE
+)
+
+injury_results
+```
+
+```{r}
+injury_results_clean <- injury_results |>
+  filter(
+    term %in% c(
+      "nightTRUE",
+      "weekendTRUE",
+      "rush_hourTRUE",
+      "speedingTRUE",
+      "alcoholTRUE",
+      "distractedTRUE",
+      "fatiguedTRUE",
+      "aggressive_drivingTRUE",
+      "traffic_violationTRUE",
+      "bicycle_involvedTRUE",
+      "motorcycle_involvedTRUE",
+      "truck_involvedTRUE",
+      "bus_involvedTRUE"
+    )
+  ) |>
+  select(term, estimate, conf.low, conf.high, p.value)
+
+injury_results_clean
+```
+
+```{r}
+AIC(
+  injury_model_1,
+  injury_model_2,
+  injury_model_3
+)
+
+```
+
+```{r}
+fatal_model <- glm(
+  fatal_crash ~
+    night +
+    weekend +
+    rush_hour +
+    factor(year) +
+    borough +
+    speeding +
+    alcohol +
+    distracted +
+    fatigued +
+    aggressive_driving +
+    traffic_violation +
+    bicycle_involved +
+    motorcycle_involved +
+    truck_involved +
+    bus_involved,
+  data = crashes_analysis,
+  family = binomial
+)
+```
+
+```{r}
+fatal_results <- tidy(
+  fatal_model,
+  exponentiate = TRUE,
+  conf.int = TRUE
+)
+```
+
+```{r}
+fatal_results_clean <- fatal_results |>
+  filter(
+    term %in% c(
+      "nightTRUE",
+      "weekendTRUE",
+      "rush_hourTRUE",
+      "speedingTRUE",
+      "alcoholTRUE",
+      "distractedTRUE",
+      "fatiguedTRUE",
+      "aggressive_drivingTRUE",
+      "traffic_violationTRUE",
+      "bicycle_involvedTRUE",
+      "motorcycle_involvedTRUE",
+      "truck_involvedTRUE",
+      "bus_involvedTRUE"
+    )
+  ) |>
+  select(term, estimate, conf.low, conf.high, p.value)
+
+fatal_results_clean
+```
+
+```{r}
+fatal_model_interaction <- glm(
+  fatal_crash ~
+    night * speeding +
+    weekend +
+    rush_hour +
+    factor(year) +
+    borough +
+    alcohol +
+    distracted +
+    fatigued +
+    aggressive_driving +
+    traffic_violation +
+    bicycle_involved +
+    motorcycle_involved +
+    truck_involved +
+    bus_involved,
+  data = crashes_analysis,
+  family = binomial
+)
+```
+
+```{r}
+tidy(
+  fatal_model_interaction,
+  exponentiate = TRUE,
+  conf.int = TRUE
+) |>
+  filter(
+    term %in% c(
+      "nightTRUE",
+      "speedingTRUE",
+      "nightTRUE:speedingTRUE"
+    )
+  ) |>
+  select(term, estimate, conf.low, conf.high, p.value)
+```
+
+```{r}
+model_comparison <- injury_results_clean |>
+  select(term, injury_or = estimate) |>
+  left_join(
+    fatal_results_clean |>
+      select(term, fatal_or = estimate),
+    by = "term"
+  ) |>
+  mutate(
+    term = str_remove(term, "TRUE"),
+    term = recode(
+      term,
+      night = "Night",
+      weekend = "Weekend",
+      rush_hour = "Rush Hour",
+      speeding = "Speeding",
+      alcohol = "Alcohol",
+      distracted = "Distracted",
+      fatigued = "Fatigued",
+      aggressive_driving = "Aggressive Driving",
+      traffic_violation = "Traffic Violation",
+      bicycle_involved = "Bicycle Involved",
+      motorcycle_involved = "Motorcycle / Scooter Involved",
+      truck_involved = "Truck Involved",
+      bus_involved = "Bus Involved"
+    )
+  )
+
+model_comparison
+```
+
+```{r}
+or_plot_data <- bind_rows(
+  injury_results_clean |>
+    mutate(outcome = "Injury"),
+
+  fatal_results_clean |>
+    mutate(outcome = "Fatality")
+) |>
+  mutate(
+    term = str_remove(term, "TRUE"),
+    term = recode(
+      term,
+      night = "Night",
+      weekend = "Weekend",
+      rush_hour = "Rush Hour",
+      speeding = "Speeding",
+      alcohol = "Alcohol",
+      distracted = "Distracted",
+      fatigued = "Fatigued",
+      aggressive_driving = "Aggressive Driving",
+      traffic_violation = "Traffic Violation",
+      bicycle_involved = "Bicycle Involved",
+      motorcycle_involved = "Motorcycle / Scooter Involved",
+      truck_involved = "Truck Involved",
+      bus_involved = "Bus Involved"
+    )
+  )
+
+ggplot(
+  or_plot_data,
+  aes(
+    x = estimate,
+    y = reorder(term, estimate),
+    shape = outcome
+  )
+) +
+  geom_vline(
+    xintercept = 1,
+    linetype = "dashed"
+  ) +
+  geom_errorbarh(
+    aes(
+      xmin = conf.low,
+      xmax = conf.high
+    ),
+    height = 0.2,
+    position = position_dodge(width = 0.5)
+  ) +
+  geom_point(
+    size = 3,
+    position = position_dodge(width = 0.5)
+  ) +
+  scale_x_log10() +
+  labs(
+    title = "Factors Associated with Injury and Fatality",
+    subtitle = "Adjusted odds ratios from logistic regression models",
+    x = "Odds Ratio (log scale)",
+    y = NULL,
+    shape = "Outcome"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+injury_predictions <- augment(
+  injury_model_3,
+  type.predict = "response"
+)
+
+fatal_predictions <- augment(
+  fatal_model,
+  type.predict = "response"
+)
+
+library(pROC)
+
+injury_roc <- roc(
+  injury_predictions$injury_crash,
+  injury_predictions$.fitted
+)
+
+fatal_roc <- roc(
+  fatal_predictions$fatal_crash,
+  fatal_predictions$.fitted
+)
+
+auc(injury_roc)
+auc(fatal_roc)
+```

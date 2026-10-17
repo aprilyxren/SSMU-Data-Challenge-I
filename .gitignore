@@ -1,0 +1,9 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+data/motor_vehicle_collisions.csv
+data/nyc_collisions_clean.rds
+data/motor_vehicle_collisions.csv
+data/nyc_collisions_clean.rds
+.DS_Store
